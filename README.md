@@ -1,6 +1,6 @@
 # Hyperspace
 
-This template should help get you started developing a vue web extension in Vite.
+A browser extension to make project research manageable
 
 ## Usage Notes
 
