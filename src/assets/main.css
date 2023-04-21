@@ -1,4 +1,60 @@
 @import "sanitize.css";
 
 body {
+  color: #333;
+  width: 20rem;
+  padding: .5rem;
+  margin: .25rem auto 0
+}
+header {
+  display: flex;
+  align-items: center
+}
+workspaces {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-content: stretch;
+  align-items: top
+}
+.workspace {
+  height: 2rem;
+  padding: 0 .5rem;
+  margin: 0 .25rem .25rem 0;
+  display: inline-flex;
+  align-items: center;
+  border-radius: .15rem;
+  cursor: pointer;
+  outline: none;
+  background: #f5f5f5
+}
+
+.workspace:hover {
+  background: #f0f0f0
+}
+
+.workspace.focused {
+  padding: .25rem;
+  display: block;
+  cursor: default;
+  height: auto;
+  margin-right: 0
+}
+
+.workspace .header {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #f0f0f0
+}
+
+.workspace .header h3 {
+  margin-right: auto;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer
+}
+
+.workspace .header .icon:hover,
+.workspace .header h3:hover {
+  color: #111
 }

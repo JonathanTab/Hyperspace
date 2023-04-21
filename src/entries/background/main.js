@@ -1,29 +1,53 @@
-import browser from "webextension-polyfill";
+import Browser from "webextension-polyfill";
 
-var workspaces = {}
-var windows = {}
+var workspaces = []
+var windows = []
 
-function createWorkspaceFromWindow(windowID) {
-  //
+async function createWorkspaceFromWindow(windowID, sendResponse) {
+  let tabsResponse = await Browser.tabs.query({
+    windowId: windowID
+  })
+  let newWorkspace = {
+    id: Date.now(),
+    name: "",
+    tabs: []
+  }
+
+  tabsResponse.forEach(tab => {
+    let newTab = {
+      favIconUrl: tab.favIconUrl,
+      index: tab.index,
+      pinned: tab.pinned,
+      title: tab.title,
+      url: tab.url
+    }
+    newWorkspace.tabs.push(newTab);
+  });
+  workspaces.push(newWorkspace);
+  sendResponse(newWorkspace.id)
 }
 
-function loadWorkspace(workspaceID) {
+async function loadWorkspace(workspaceID) {
 
 }
 
-function sync() {
+async function sync() {
   //TODO this should eventually provide a way to resolve conflicts
 }
 
-function deleteWorkspace(workspaceID) {}
+async function deleteWorkspace(workspaceID) {}
 
-browser.runtime.onMessage.addListener((msg, sender, response) => {
-  switch (msg.command) {
+Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  switch (msg.mode) {
     case "get":
-      response(workspaces)
+      sendResponse(workspaces)
+      break;
+    case "create":
+      createWorkspaceFromWindow(msg.windowID, sendResponse);
       break;
     default:
-      response("df")
+      sendResponse("df")
       break;
   }
+  return true;
 });
