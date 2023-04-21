@@ -1,6 +1,9 @@
+const colors = require('./colors')
 module.exports = {
   plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
+    'postcss-simple-vars': {
+      variables: colors
+    },
+    autoprefixer: {}
   },
 }
