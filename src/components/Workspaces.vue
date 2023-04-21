@@ -1,5 +1,5 @@
 <template>
-  <button class="bg-black-100">Track this window</button>
+  <button>Track this window</button>
 </template>
 
 <script setup>
