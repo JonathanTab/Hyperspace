@@ -22,6 +22,7 @@
     "postcss-normalize": "^10.0.1",
     "postcss-simple-vars": "^7.0.1",
     "vite": "~4.1.4",
+    "vite-svg-loader": "^4.0.0",
     "web-ext": "^7.4.0"
   },
   "dependencies": {

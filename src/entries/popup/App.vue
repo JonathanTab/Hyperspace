@@ -1,35 +1,40 @@
 <template>
   <main>
-    <header><button :hidden="tracked" @click="trackThisWindow">Add this window</button><span>Syncing</span></header>
+    <header><button :hidden="currentWorkspaceId" @click="trackThisWindow">Add this window</button><span>Syncing</span>
+      <configIcon style="height: 1rem;" />
+    </header>
     <div id="workspaces">
-      <Workspace v-for="workspace in workspaces" :id="workspace.id"></Workspace>
+      <Workspace v-for="workspace in workspaces" :key="workspace.id" :data="workspace"
+        :class="workspace.id == currentWorkspaceId ? 'current' : 'other'">
+      </Workspace>
     </div>
 
   </main>
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, reactive } from "vue";
 import Browser from "webextension-polyfill";
 import Workspace from "~/components/Workspace.vue";
+import configIcon from '~/assets/config.svg'
 
 var workspaces = ref([]);
-var tracked = ref(false)
+var currentWorkspaceId = ref(false);
+var window = "";
 
 
+updateCurrentWorkspaceId();
 updateList();
-updateTracked();
 
-
-async function updateTracked() {
-  let window = await Browser.windows.getCurrent();
+async function updateCurrentWorkspaceId() {
+  window = await Browser.windows.getCurrent();
   let res = await Browser.runtime.sendMessage({
     mode: "identifyWindow", windowID: window.id
   });
   if (res == false) {
-    tracked.value = false
+    currentWorkspaceId.value = false
   } else {
-    tracked.value = true
+    currentWorkspaceId.value = res
   }
 }
 async function updateList() {
@@ -37,9 +42,9 @@ async function updateList() {
 }
 
 async function trackThisWindow() {
-  tracked = true;
-  let window = await Browser.windows.getCurrent();
   const response = await Browser.runtime.sendMessage({ mode: "create", windowID: window.id });
+  updateCurrentWorkspaceId()
+  updateList()
 
 }
 
@@ -54,4 +59,17 @@ Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 </script>
 
-<style></style>
+<style>
+header {
+  display: flex;
+  align-items: center
+}
+
+#workspaces {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-content: stretch;
+  align-items: top
+}
+</style>

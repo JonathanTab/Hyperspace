@@ -15,7 +15,7 @@ async function createWorkspaceFromWindow(windowID, sendResponse) {
   })
   let newWorkspace = {
     id: Date.now(),
-    name: "",
+    name: "Rename me",
     tabs: []
   }
 
