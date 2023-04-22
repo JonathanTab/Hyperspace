@@ -85,6 +85,9 @@ Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "create":
       createWorkspaceFromWindow(msg.windowID, sendResponse);
       break;
+    case "load":
+      loadWorkspace(msg.workspaceID, sendResponse);
+      break;
     default:
       sendResponse("df")
       break;

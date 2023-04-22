@@ -1,11 +1,13 @@
 <template>
   <main>
-    <header><button :hidden="currentWorkspaceId" @click="trackThisWindow">Add this window</button><span>Syncing</span>
+    <header><button :style="{ visibility: currentWorkspaceId ? 'hidden' : 'visible' }" @click="trackThisWindow">Add this
+        window</button><span>Syncing</span>
       <configIcon style="height: 1rem;" />
     </header>
     <div id="workspaces">
-      <Workspace v-for="workspace in workspaces" :key="workspace.id" :data="workspace"
-        :class="workspace.id == currentWorkspaceId ? 'current' : 'other'">
+      <Workspace v-for="workspace in workspaces" :key="workspace.id" :data="workspace" :initial-editing="false"
+        :class="workspace.id == currentWorkspaceId ? 'current' : 'other'"
+        :expanded="workspace.id == focusedWorkspaceId ? true : false" @focus-change="focusedWorkspaceId = $event">
       </Workspace>
     </div>
 
@@ -21,6 +23,7 @@ import configIcon from '~/assets/config.svg'
 var workspaces = ref([]);
 var currentWorkspaceId = ref(false);
 var window = "";
+var focusedWorkspaceId = ref(false);
 
 
 updateCurrentWorkspaceId();
@@ -45,7 +48,6 @@ async function trackThisWindow() {
   const response = await Browser.runtime.sendMessage({ mode: "create", windowID: window.id });
   updateCurrentWorkspaceId()
   updateList()
-
 }
 
 

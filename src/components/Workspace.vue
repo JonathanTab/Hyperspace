@@ -1,10 +1,28 @@
 <template>
-  <div class="workspace" :id="data.id"><span :hidden="expanded">{{ data.name }}</span>
+  <div @dblclick="load" @click="$emit('focusChange', data.id)" class="workspace" :class="{ focused: expanded }"
+    :id="data.id">
+
+    <span :hidden="expanded">{{ data.name }}</span>
+
+
     <template v-if="expanded">
       <header>
-        {{ data.name }}
-        <configIcon />
+
+        <template v-if="!editing">
+          <h3>{{ data.name }}</h3>
+          <configIcon class="icon control" @click="editing = true" />
+        </template>
+
+        <template v-else>
+          <form><input type="text" name="name" v-model="data.name" autocomplete="off" focus>
+            <div class="actions"><button type="submit">Save</button><button type="button">Remove</button></div>
+          </form>
+        </template>
+
       </header>
+      <ul class="tabs">
+        <li v-for="tab in data.tabs" :style="{ backgroundImage: 'url(' + tab.favIconUrl + ')' }">{{ tab.title }}</li>
+      </ul>
 
     </template>
   </div>
@@ -13,10 +31,21 @@
 <script setup>
 import { ref } from 'vue';
 import configIcon from '~/assets/config.svg'
+import Browser from "webextension-polyfill";
+import { emit } from 'process';
 
-defineProps(['id', 'data'])
+defineEmits(['focusChange']);
+const props = defineProps({ id: {}, data: {}, expanded: {}, initialEditing: { default: false } })
 
-var expanded = ref(false)
+var editing = ref(false);
+if (props.initialEditing == true) {
+  editing = true;
+}
+
+
+async function load() {
+  const response = await Browser.runtime.sendMessage({ mode: "load", workspaceID: props.id });
+}
 
 </script>
 
@@ -45,21 +74,22 @@ workspace:hover {
   margin-right: 0
 }
 
-.workspace .header {
+.workspace header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid #f0f0f0
 }
 
-.workspace .header h3 {
+.workspace header h3 {
   margin-right: auto;
   display: inline-flex;
   align-items: center;
   cursor: pointer
 }
 
-.workspace .header .icon:hover,
-.workspace .header h3:hover {
+.workspace header .icon:hover,
+.workspace header h3:hover {
   color: #111
 }
 
