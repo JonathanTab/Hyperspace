@@ -1,3 +1,6 @@
+import {
+  data
+} from "autoprefixer";
 import Browser from "webextension-polyfill";
 
 var settings = {
@@ -6,84 +9,235 @@ var settings = {
   password: "d2ert"
 }
 
+//TODO need to deal with removing windows when closed or workspace deleted
 var workspaces = []
 var windows = []
+var baseTimestamp = ""
 
 async function createWorkspaceFromWindow(windowID, sendResponse) {
-  let tabsResponse = await Browser.tabs.query({
-    windowId: windowID
-  })
   let newWorkspace = {
     id: Date.now(),
     name: "Rename me",
-    tabs: []
+    tabs: await createTabsArray(windowID)
   }
 
+
+  workspaces.push(newWorkspace);
+  windows.push({
+    windowId: windowID,
+    workspaceId: newWorkspace.id
+  })
+  sync(true);
+  sendResponse(newWorkspace.id)
+}
+
+async function createTabsArray(windowID) {
+  let tabsArray = [];
+  let tabsResponse = await Browser.tabs.query({
+    windowId: windowID
+  })
   tabsResponse.forEach(tab => {
-    let newTab = {
+    tabsArray.push({
       favIconUrl: tab.favIconUrl,
       index: tab.index,
       pinned: tab.pinned,
       title: tab.title,
       url: tab.url
-    }
-    newWorkspace.tabs.push(newTab);
-  });
-  workspaces.push(newWorkspace);
-  windows.push({
-    windowID: windowID,
-    workspaceID: newWorkspace.id
-  })
-  triggerUpdateList();
-  sendResponse(newWorkspace.id)
-}
-
-async function loadWorkspace(workspaceID) {
-
-}
-
-async function sync() {
-  //TODO this should eventually provide a way to resolve conflicts
-  (async () => {
-    const rawResponse = await fetch('https://httpbin.org/post', {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        a: 1,
-        b: 'Textual content'
-      })
     });
-    const content = await rawResponse.json();
-
-    console.log(content);
-  })();
+  });
+  return tabsArray;
 }
 
-async function deleteWorkspace(workspaceID) {}
+async function loadWorkspace(workspaceId, sendResponse) {
+  sendResponse();
+  let workspaceIndex = workspaces.findIndex((e) => {
+    return e.id == workspaceId;
+  })
+  if (workspaceIndex > -1) {
+    let tabs = []
+    workspaces[workspaceIndex].tabs.forEach(async e => {
+      tabs.push(e.url);
+    });
+    let window = await Browser.windows.create({
+      url: tabs
+    })
 
-async function triggerUpdateList() {
+    let tabsResponse = await Browser.tabs.query({
+      windowId: window.id
+    })
+    let i = 0
+    tabsResponse.forEach(tab => {
+      if (i !== 0) {
+        setTimeout(() => {
+          Browser.tabs.discard(tab.id)
+        }, 500)
+      }
+      i = i++;
+    });
+
+    windows.push({
+      windowId: window.id,
+      workspaceId: workspaceId
+    });
+  } else {
+    err("Cant find that workspace");
+  }
+}
+
+async function sync(localChanges = false) {
+  var URL = settings.syncURL + "?p=" + settings.password + "&appID=" + settings.appID
+  //TODO this should eventually provide a way to resolve conflicts
+  //Should we read or write?
+
+
+  if (localChanges == true) {
+    let response = await fetch(URL + "&mode=stamp")
+    let remoteTimestamp = await response.text();
+    if (parseInt(remoteTimestamp) > parseInt(baseTimestamp)) {
+      //remote timestamp bigger
+      err("Tried syncing change.Remote store is newer " + remoteTimestamp + " " + baseTimestamp);
+
+    } else {
+      //our base is up to date
+      let response = await fetch(URL + '&mode=write', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(workspaces)
+      });
+      if (!response.ok) {
+        Browser.runtime.sendMessage({
+          mode: "state",
+          msg: "Failed writing to remote store"
+        });
+      }
+      response = await fetch(URL + "&mode=stamp")
+      baseTimestamp = await response.text();
+    }
+  } else
+
+  //No local changes- Get only
+  {
+    let response = await fetch(URL + "&mode=get")
+    if (!response.ok) {
+      Browser.runtime.sendMessage({
+        mode: "state",
+        msg: "Failed reading remote store"
+      });
+    }
+    let text = await response.text()
+    if (text.length > 2) {
+      workspaces = JSON.parse(text)
+    } else {
+      Browser.runtime.sendMessage({
+        mode: "state",
+        msg: "Blank remote store. Initialized"
+      });
+    }
+    baseTimestamp = response.headers.get('timestamp')
+  }
+  pushWorkspaces();
+}
+
+function pushWorkspaces() {
   Browser.runtime.sendMessage({
-    mode: "updateList"
+    mode: "updateList",
+    data: workspaces
   });
+}
+
+function err(msg) {
+  Browser.runtime.sendMessage({
+    mode: "state",
+    msg: msg
+  });
+}
+
+async function deleteWorkspace(workspaceID, sendResponse) {
+  let index = workspaces.findIndex((e) => {
+    return e.id == workspaceID;
+  })
+  if (index > -1) { // only splice array when item is found
+    workspaces.splice(index, 1); // 2nd parameter means remove one item only
+  }
+
+  index = windows.findIndex((e) => {
+    return e.workspaceId == workspaceID;
+  })
+  if (index > -1) { // only splice array when item is found
+    windows.splice(index, 1); // 2nd parameter means remove one item only
+  }
+  sync(true);
+  sendResponse();
+}
+async function changeWorkspaceName(workspaceID, newName, sendResponse) {
+  let index = workspaces.findIndex((e) => {
+    return e.id == workspaceID;
+  })
+  if (index > -1) { // only splice array when item is found
+    workspaces[index].name = newName
+  }
+
+  sync(true);
+  sendResponse();
+}
+
+Browser.tabs.onUpdated.addListener((tabID, changeInfo, tab) => {
+  if (changeInfo.status == "complete" || typeof changeInfo.favIconUrl !== "undefined") {
+    windowRegen(tab.windowId);
+  }
+})
+Browser.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  if (removeInfo.isWindowClosing !== true) {
+    windowRegen(removeInfo.windowId)
+  }
+})
+Browser.tabs.onDetached.addListener((tabId, detachInfo) => {
+  windowRegen(detachInfo.oldWindowId)
+})
+Browser.tabs.onAttached.addListener((tabId, attachInfo) => {
+  windowRegen(attachInfo.newWindowId)
+})
+async function windowRegen(windowId) {
+
+  let windowIndex = windows.findIndex((e) => {
+    return e.windowId == windowId;
+  })
+  if (windowIndex > -1) {
+    let workspaceIndex = workspaces.findIndex((e) => {
+      return e.id == windows[windowIndex].workspaceId;
+    })
+    if (workspaceIndex > -1) {
+      workspaces[workspaceIndex].tabs = await createTabsArray(windowId);
+    }
+  }
+  sync(true);
 }
 
 Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.mode) {
     case "get":
-      sendResponse(workspaces)
+      sendResponse();
+      pushWorkspaces()
+      sync();
       break;
     case "identifyWindow":
-      if (windows.some((e) => e.windowID == msg.windowID)) {
-        sendResponse(windows.find((e) => e.windowID == msg.windowID).workspaceID)
+      if (windows.some((e) => e.windowId == msg.windowID)) {
+        sendResponse(windows.find((e) => e.windowId == msg.windowID).workspaceId)
       } else {
         sendResponse(false);
       }
       break;
     case "create":
       createWorkspaceFromWindow(msg.windowID, sendResponse);
+      break;
+    case "delete":
+      deleteWorkspace(msg.workspaceID, sendResponse);
+      break;
+    case "changeName":
+      changeWorkspaceName(msg.workspaceID, msg.newName, sendResponse)
       break;
     case "load":
       loadWorkspace(msg.workspaceID, sendResponse);
@@ -94,3 +248,5 @@ Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   return true;
 });
+
+sync();

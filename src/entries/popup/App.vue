@@ -1,16 +1,23 @@
 <template>
   <main>
-    <header><button :style="{ visibility: currentWorkspaceId ? 'hidden' : 'visible' }" @click="trackThisWindow">Add this
-        window</button><span>Syncing</span>
+    <header>
+      <button :style="{ visibility: currentWorkspaceId ? 'hidden' : 'visible' }" @click="trackThisWindow">
+        Add this
+        window
+      </button><span> {{ state }}</span>
+      <div id="errored" hidden style="margin: 0 2em; font-size: large;">
+        <span :hidden="errored" style="color: #0FB;">✔</span>
+        <span :hidden="!errored" style="color: #F00;">❌</span>
+      </div>
       <configIcon style="height: 1rem;" />
     </header>
     <div id="workspaces">
-      <Workspace v-for="workspace in workspaces" :key="workspace.id" :data="workspace" :initial-editing="false"
+      <Workspace
+        v-for="workspace in workspaces" :key="workspace.id" :data="workspace" :initial-editing="false"
         :class="workspace.id == currentWorkspaceId ? 'current' : 'other'"
-        :expanded="workspace.id == focusedWorkspaceId ? true : false" @focus-change="focusedWorkspaceId = $event">
-      </Workspace>
+        :expanded="workspace.id == focusedWorkspaceId ? true : false" @focus-change="focusedWorkspaceId = $event"
+      />
     </div>
-
   </main>
 </template>
 
@@ -24,10 +31,14 @@ var workspaces = ref([]);
 var currentWorkspaceId = ref(false);
 var window = "";
 var focusedWorkspaceId = ref(false);
+var errored = false;
+var state = ref("")
 
 
 updateCurrentWorkspaceId();
-updateList();
+Browser.runtime.sendMessage({
+    mode: "get"
+  });
 
 async function updateCurrentWorkspaceId() {
   window = await Browser.windows.getCurrent();
@@ -40,22 +51,24 @@ async function updateCurrentWorkspaceId() {
     currentWorkspaceId.value = res
   }
 }
-async function updateList() {
-  workspaces.value = await Browser.runtime.sendMessage({ mode: "get" });
+async function updateList(data) {
+  updateCurrentWorkspaceId();
+  workspaces.value = data;
 }
 
 async function trackThisWindow() {
   const response = await Browser.runtime.sendMessage({ mode: "create", windowID: window.id });
   updateCurrentWorkspaceId()
-  updateList()
 }
 
 
 Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.mode) {
     case "updateList":
-      updateList()
+      updateList(msg.data)
       break;
+    case "state":
+      state.value = msg.msg;
   }
 });
 
@@ -64,7 +77,8 @@ Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 <style>
 header {
   display: flex;
-  align-items: center
+  align-items: center;
+  justify-content: flex-start;
 }
 
 #workspaces {

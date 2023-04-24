@@ -1,29 +1,37 @@
-<template>
-  <div @dblclick="load" @click="$emit('focusChange', data.id)" class="workspace" :class="{ focused: expanded }"
-    :id="data.id">
 
+<template>
+  <div
+    :id="data.id" class="workspace" :class="{ focused: expanded }" @dblclick="load"
+    @click="$emit('focusChange', data.id)"
+  >
     <span :hidden="expanded">{{ data.name }}</span>
 
 
     <template v-if="expanded">
       <header>
-
         <template v-if="!editing">
           <h3>{{ data.name }}</h3>
           <configIcon class="icon control" @click="editing = true" />
         </template>
 
         <template v-else>
-          <form><input type="text" name="name" v-model="data.name" autocomplete="off" focus>
-            <div class="actions"><button type="submit">Save</button><button type="button">Remove</button></div>
+          <form @submit.prevent="changeName">
+            <input v-model="data.name" type="text" name="name" autocomplete="off" focus>
+            <div class="actions">
+              <button type="submit">
+                Save
+              </button><button type="button" @click="deleteThis()">
+                Remove
+              </button>
+            </div>
           </form>
         </template>
-
       </header>
       <ul class="tabs">
-        <li v-for="tab in data.tabs" :style="{ backgroundImage: 'url(' + tab.favIconUrl + ')' }">{{ tab.title }}</li>
+        <li v-for="tab in data.tabs" :style="{ backgroundImage: 'url(' + tab.favIconUrl + ')' }">
+          {{ tab.title }}
+        </li>
       </ul>
-
     </template>
   </div>
 </template>
@@ -39,12 +47,19 @@ const props = defineProps({ id: {}, data: {}, expanded: {}, initialEditing: { de
 
 var editing = ref(false);
 if (props.initialEditing == true) {
-  editing = true;
+  editing.value = true;
 }
 
 
 async function load() {
-  const response = await Browser.runtime.sendMessage({ mode: "load", workspaceID: props.id });
+  const response = await Browser.runtime.sendMessage({ mode: "load", workspaceID: props.data.id });
+}
+async function deleteThis() {
+  const response = await Browser.runtime.sendMessage({ mode: "delete", workspaceID: props.data.id });
+}
+async function changeName() {
+  const response = await Browser.runtime.sendMessage({ mode: "changeName", workspaceID: props.data.id, newName: props.data.name });
+  editing.value = false;
 }
 
 </script>
@@ -72,6 +87,9 @@ workspace:hover {
   cursor: default;
   height: auto;
   margin-right: 0
+}
+.workspace.current {
+  background-color:lightcyan;
 }
 
 .workspace header {
