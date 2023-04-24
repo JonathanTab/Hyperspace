@@ -1,9 +1,9 @@
 {
-  "name": "vite-web-extension",
-  "version": "1.0.0",
-  "displayName": "Vite Web Extension",
-  "author": "@samrum/vite-plugin-web-extension",
-  "description": "A @samrum/vite-plugin-web-extension web extension",
+  "name": "Hyperspace",
+  "version": "0.0.9",
+  "displayName": "Hyperspace",
+  "author": "jptabe",
+  "description": "A browser extension to make project research manageable",
   "scripts": {
     "build": "vite build",
     "watch": "vite build --watch --mode development --minify false",
