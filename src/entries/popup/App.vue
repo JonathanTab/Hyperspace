@@ -13,7 +13,7 @@
     </header>
     <div id="workspaces">
       <Workspace
-        v-for="workspace in workspaces" :key="workspace.id" :data="workspace" :initial-editing="false"
+        v-for="workspace in workspaces" :key="workspace.id" :data="workspace" :initial-editing="true"
         :class="workspace.id == currentWorkspaceId ? 'current' : 'other'"
         :expanded="workspace.id == focusedWorkspaceId ? true : false" @focus-change="focusedWorkspaceId = $event"
       />

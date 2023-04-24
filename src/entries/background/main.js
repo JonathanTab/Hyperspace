@@ -13,6 +13,7 @@ var settings = {
 var workspaces = []
 var windows = []
 var baseTimestamp = ""
+var saving = false
 
 async function createWorkspaceFromWindow(windowID, sendResponse) {
   let newWorkspace = {
@@ -27,7 +28,9 @@ async function createWorkspaceFromWindow(windowID, sendResponse) {
     windowId: windowID,
     workspaceId: newWorkspace.id
   })
-  sync(true);
+  //For snappy ui
+  pushWorkspaces();
+  syncChanges();
   sendResponse(newWorkspace.id)
 }
 
@@ -83,6 +86,20 @@ async function loadWorkspace(workspaceId, sendResponse) {
     err("Cant find that workspace");
   }
 }
+const debounce = (callback, wait) => {
+  let timeoutId = null;
+  return (...args) => {
+    self.clearTimeout(timeoutId);
+    timeoutId = self.setTimeout(() => {
+      callback.apply(null, args);
+    }, wait);
+  };
+}
+
+function syncChanges() { saving = true; syncChangesPT2(); }
+const syncChangesPT2 = debounce(() => {
+  sync(true);
+}, 750);
 
 async function sync(localChanges = false) {
   var URL = settings.syncURL + "?p=" + settings.password + "&appID=" + settings.appID
@@ -93,11 +110,7 @@ async function sync(localChanges = false) {
   if (localChanges == true) {
     let response = await fetch(URL + "&mode=stamp")
     let remoteTimestamp = await response.text();
-    if (parseInt(remoteTimestamp) > parseInt(baseTimestamp)) {
-      //remote timestamp bigger
-      err("Tried syncing change.Remote store is newer " + remoteTimestamp + " " + baseTimestamp);
-
-    } else {
+    if (!isNaN(parseInt(remoteTimestamp)) && !isNaN(parseInt(baseTimestamp)) && (parseInt(baseTimestamp) == parseInt(remoteTimestamp))) {
       //our base is up to date
       let response = await fetch(URL + '&mode=write', {
         method: 'POST',
@@ -113,30 +126,35 @@ async function sync(localChanges = false) {
           msg: "Failed writing to remote store"
         });
       }
-      response = await fetch(URL + "&mode=stamp")
-      baseTimestamp = await response.text();
+      baseTimestamp = response.headers.get('timestamp')
+      saving = false;
+    } else {
+      //remote timestamp bigger
+      err("Failed save. Remote store is newer: " + remoteTimestamp + " v " + baseTimestamp);
     }
   } else
 
   //No local changes- Get only
   {
-    let response = await fetch(URL + "&mode=get")
-    if (!response.ok) {
-      Browser.runtime.sendMessage({
-        mode: "state",
-        msg: "Failed reading remote store"
-      });
+    if (saving == false) {
+      let response = await fetch(URL + "&mode=get")
+      if (!response.ok) {
+        Browser.runtime.sendMessage({
+          mode: "state",
+          msg: "Failed reading remote store"
+        });
+      }
+      let text = await response.text()
+      if (text.length > 2) {
+        workspaces = JSON.parse(text)
+      } else {
+        Browser.runtime.sendMessage({
+          mode: "state",
+          msg: "Blank remote store. Initialized"
+        });
+      }
+      baseTimestamp = response.headers.get('timestamp')
     }
-    let text = await response.text()
-    if (text.length > 2) {
-      workspaces = JSON.parse(text)
-    } else {
-      Browser.runtime.sendMessage({
-        mode: "state",
-        msg: "Blank remote store. Initialized"
-      });
-    }
-    baseTimestamp = response.headers.get('timestamp')
   }
   pushWorkspaces();
 }
@@ -145,7 +163,7 @@ function pushWorkspaces() {
   Browser.runtime.sendMessage({
     mode: "updateList",
     data: workspaces
-  }).catch((e) => {});
+  }).catch((e) => { });
 }
 
 function err(msg) {
@@ -169,7 +187,9 @@ async function deleteWorkspace(workspaceID, sendResponse) {
   if (index > -1) { // only splice array when item is found
     windows.splice(index, 1); // 2nd parameter means remove one item only
   }
-  sync(true);
+  //For snappy ui
+  pushWorkspaces();
+  syncChanges();
   sendResponse();
 }
 async function changeWorkspaceName(workspaceID, newName, sendResponse) {
@@ -180,7 +200,7 @@ async function changeWorkspaceName(workspaceID, newName, sendResponse) {
     workspaces[index].name = newName
   }
 
-  sync(true);
+  syncChanges();
   sendResponse();
 }
 
@@ -213,7 +233,7 @@ async function windowRegen(windowId) {
       workspaces[workspaceIndex].tabs = await createTabsArray(windowId);
     }
   }
-  sync(true);
+  syncChanges();
 }
 
 Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {

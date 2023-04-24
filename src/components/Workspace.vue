@@ -1,8 +1,8 @@
 
 <template>
   <div
-    :id="data.id" class="workspace" :class="{ focused: expanded }" @dblclick="load"
-    @click="$emit('focusChange', data.id)"
+    :id="data.id" class="workspace" :class="{ focused: expanded }" @dblclick.left="load"
+    @contextmenu.prevent="$emit('focusChange', data.id)"
   >
     <span :hidden="expanded">{{ data.name }}</span>
 
@@ -59,7 +59,6 @@ async function deleteThis() {
 }
 async function changeName() {
   const response = await Browser.runtime.sendMessage({ mode: "changeName", workspaceID: props.data.id, newName: props.data.name });
-  editing.value = false;
 }
 
 </script>
