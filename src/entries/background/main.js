@@ -145,7 +145,7 @@ function pushWorkspaces() {
   Browser.runtime.sendMessage({
     mode: "updateList",
     data: workspaces
-  });
+  }).catch((e) => {});
 }
 
 function err(msg) {
