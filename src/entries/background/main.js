@@ -9,11 +9,40 @@ var settings = {
   password: "d2ert"
 }
 
-//TODO need to deal with removing windows when closed or workspace deleted
-var workspaces = []
-var windows = []
+
+var workspaces = "not ready"
+var windows = "not ready";
 var baseTimestamp = ""
 var saving = false
+
+function saveState() {
+  Browser.storage.session.set({ windows: windows, workspaces: workspaces, baseTimestamp: baseTimestamp });
+}
+async function waitReady() {
+  return new Promise((resolve, reject) => {
+    if (windows == "not ready") {
+      console.log('resuming SW');
+      Browser.storage.session.get(['windows', 'workspaces', 'baseTimestamp']).then((result) => {
+        if (typeof result.windows == 'undefined') {
+          windows = {};
+        } else {
+          windows = result.windows;
+        }
+        if (typeof result.workspaces == 'undefined') {
+          workspaces = [];
+        } else {
+          workspaces = result.workspaces;
+          baseTimestamp = result.baseTimestamp;
+        }
+        //if anything got initialized
+        saveState();
+        resolve();
+      });
+    } else {
+      resolve();
+    }
+  });
+}
 
 async function createWorkspaceFromWindow(windowID, sendResponse) {
   let newWorkspace = {
@@ -24,10 +53,8 @@ async function createWorkspaceFromWindow(windowID, sendResponse) {
 
 
   workspaces.push(newWorkspace);
-  windows.push({
-    windowId: windowID,
-    workspaceId: newWorkspace.id
-  })
+  windows[windowID] = newWorkspace.id
+  saveState();
   //For snappy ui
   pushWorkspaces();
   syncChanges();
@@ -57,33 +84,36 @@ async function loadWorkspace(workspaceId, sendResponse) {
     return e.id == workspaceId;
   })
   if (workspaceIndex > -1) {
-    let tabs = []
-    workspaces[workspaceIndex].tabs.forEach(async e => {
-      tabs.push(e.url);
-    });
-    let window = await Browser.windows.create({
-      url: tabs
-    })
+    if (typeof getKeyByValue(windows, workspaceId) !== 'undefined') {
+      Browser.windows.update(parseInt(getKeyByValue(windows, workspaceId)), { focused: true })
+    } else {
+      let tabs = []
+      workspaces[workspaceIndex].tabs.forEach(async e => {
+        tabs.push(e.url);
+      });
+      let window = await Browser.windows.create({
+        url: tabs
+      })
 
-    let tabsResponse = await Browser.tabs.query({
-      windowId: window.id
-    })
-    let i = 0
-    tabsResponse.forEach(tab => {
-      if (i !== 0) {
-        setTimeout(() => {
-          Browser.tabs.discard(tab.id)
-        }, 500)
-      }
-      i = i++;
-    });
+      let tabsResponse = await Browser.tabs.query({
+        windowId: window.id
+      })
+      let i = 0
+      tabsResponse.forEach(tab => {
+        if (i !== 0) {
+          setTimeout(() => {
+            Browser.tabs.discard(tab.id)
+          }, 500)
+        }
+        i = i++;
+      });
 
-    windows.push({
-      windowId: window.id,
-      workspaceId: workspaceId
-    });
+      windows[window.id] = workspaceId;
+      saveState();
+      pushWindows();
+    }
   } else {
-    err("Cant find that workspace");
+    sendError("Cant find that workspace");
   }
 }
 const debounce = (callback, wait) => {
@@ -108,6 +138,7 @@ async function sync(localChanges = false) {
 
 
   if (localChanges == true) {
+    saveState();
     let response = await fetch(URL + "&mode=stamp")
     let remoteTimestamp = await response.text();
     if (!isNaN(parseInt(remoteTimestamp)) && !isNaN(parseInt(baseTimestamp)) && (parseInt(baseTimestamp) == parseInt(remoteTimestamp))) {
@@ -127,10 +158,11 @@ async function sync(localChanges = false) {
         });
       }
       baseTimestamp = response.headers.get('timestamp')
+      saveState();
       saving = false;
     } else {
       //remote timestamp bigger
-      err("Failed save. Remote store is newer: " + remoteTimestamp + " v " + baseTimestamp);
+      sendError("Failed save. Remote store is newer: " + remoteTimestamp + " v " + baseTimestamp);
     }
   } else
 
@@ -154,6 +186,7 @@ async function sync(localChanges = false) {
         });
       }
       baseTimestamp = response.headers.get('timestamp')
+      saveState();
     }
   }
   pushWorkspaces();
@@ -165,28 +198,37 @@ function pushWorkspaces() {
     data: workspaces
   }).catch((e) => { });
 }
+function pushWindows() {
+  Browser.runtime.sendMessage({
+    mode: "updateWindows",
+    data: windows
+  }).catch((e) => { });
+}
 
-function err(msg) {
+function sendError(msg) {
   Browser.runtime.sendMessage({
     mode: "state",
     msg: msg
   });
 }
+function getKeyByValue(object, value) {
+  return Object.keys(object).find(key => object[key] === value);
+}
 
 async function deleteWorkspace(workspaceID, sendResponse) {
-  let index = workspaces.findIndex((e) => {
+  let workspaceIndex = workspaces.findIndex((e) => {
     return e.id == workspaceID;
   })
-  if (index > -1) { // only splice array when item is found
-    workspaces.splice(index, 1); // 2nd parameter means remove one item only
+  if (workspaceIndex > -1) { // only splice array when item is found
+    workspaces.splice(workspaceIndex, 1); // 2nd parameter means remove one item only
   }
 
-  index = windows.findIndex((e) => {
-    return e.workspaceId == workspaceID;
-  })
-  if (index > -1) { // only splice array when item is found
-    windows.splice(index, 1); // 2nd parameter means remove one item only
+  let windowKey = getKeyByValue(windows, workspaceID);
+  if (typeof windowKey !== 'undefined') {
+    delete (windows[windowKey])
+    saveState();
   }
+
   //For snappy ui
   pushWorkspaces();
   syncChanges();
@@ -196,13 +238,35 @@ async function changeWorkspaceName(workspaceID, newName, sendResponse) {
   let index = workspaces.findIndex((e) => {
     return e.id == workspaceID;
   })
-  if (index > -1) { // only splice array when item is found
+  if (index > -1) {
     workspaces[index].name = newName
   }
 
   syncChanges();
   sendResponse();
 }
+
+async function windowRegen(windowId) {
+  await waitReady();
+  if (windows[windowId] !== 'undefined') {
+    console.log(windows[windowId]);
+
+    let index = workspaces.findIndex((e) => {
+      return e.id == windows[windowId];
+    })
+    console.log(index);
+    if (index > -1) {
+      workspaces[index].tabs = await createTabsArray(windowId);
+      console.log("created array");
+      syncChanges();
+    }
+  }
+}
+
+
+////////////////////////////////
+//Listeners
+////////////////////////////////
 
 Browser.tabs.onUpdated.addListener((tabID, changeInfo, tab) => {
   if (changeInfo.status == "complete" || typeof changeInfo.favIconUrl !== "undefined") {
@@ -220,35 +284,25 @@ Browser.tabs.onDetached.addListener((tabId, detachInfo) => {
 Browser.tabs.onAttached.addListener((tabId, attachInfo) => {
   windowRegen(attachInfo.newWindowId)
 })
-async function windowRegen(windowId) {
+Browser.windows.onRemoved.addListener(async (windowID) => {
+  await waitReady();
+  delete (windows[windowID]);
+  saveState();
+  pushWindows();
+});
 
-  let windowIndex = windows.findIndex((e) => {
-    return e.windowId == windowId;
-  })
-  if (windowIndex > -1) {
-    let workspaceIndex = workspaces.findIndex((e) => {
-      return e.id == windows[windowIndex].workspaceId;
-    })
-    if (workspaceIndex > -1) {
-      workspaces[workspaceIndex].tabs = await createTabsArray(windowId);
-    }
-  }
-  syncChanges();
-}
-
-Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+Browser.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
+  await waitReady();
   switch (msg.mode) {
-    case "get":
+    case "getWorkspaces":
       sendResponse();
+      sync()
       pushWorkspaces()
       sync();
       break;
-    case "identifyWindow":
-      if (windows.some((e) => e.windowId == msg.windowID)) {
-        sendResponse(windows.find((e) => e.windowId == msg.windowID).workspaceId)
-      } else {
-        sendResponse(false);
-      }
+    case "getWindows":
+      sendResponse();
+      pushWindows()
       break;
     case "create":
       createWorkspaceFromWindow(msg.windowID, sendResponse);
@@ -269,4 +323,4 @@ Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
-sync();
+waitReady()

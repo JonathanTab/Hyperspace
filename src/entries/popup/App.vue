@@ -13,7 +13,7 @@
     </header>
     <div id="workspaces">
       <Workspace
-        v-for="workspace in workspaces" :key="workspace.id" :data="workspace" :initial-editing="true"
+        v-for="workspace in workspaces" :key="workspace.id" :data="workspace" :initial-editing="true" :open="typeof getKeyByValue(windows, workspace.id) !== 'undefined' ? true : false"
         :class="workspace.id == currentWorkspaceId ? 'current' : 'other'"
         :expanded="workspace.id == focusedWorkspaceId ? true : false" @focus-change="focusedWorkspaceId = $event"
       />
@@ -28,6 +28,7 @@ import Workspace from "~/components/Workspace.vue";
 import configIcon from '~/assets/config.svg'
 
 var workspaces = ref([]);
+var windows = ref([]);
 var currentWorkspaceId = ref(false);
 var window = "";
 var focusedWorkspaceId = ref(false);
@@ -35,37 +36,39 @@ var errored = false;
 var state = ref("")
 
 
-updateCurrentWorkspaceId();
 Browser.runtime.sendMessage({
-    mode: "get"
-  });
+    mode: "getWorkspaces"
+});
+Browser.runtime.sendMessage({
+  mode: "getWindows"
+});
 
-async function updateCurrentWorkspaceId() {
-  window = await Browser.windows.getCurrent();
-  let res = await Browser.runtime.sendMessage({
-    mode: "identifyWindow", windowID: window.id
-  });
-  if (res == false) {
-    currentWorkspaceId.value = false
-  } else {
-    currentWorkspaceId.value = res
-  }
-}
 async function updateList(data) {
-  updateCurrentWorkspaceId();
   workspaces.value = data;
+}
+async function updateWindows(data) {
+  window = await Browser.windows.getCurrent();
+  windows.value = data;
+  currentWorkspaceId.value = windows.value[window.id];
 }
 
 async function trackThisWindow() {
   const response = await Browser.runtime.sendMessage({ mode: "create", windowID: window.id });
-  updateCurrentWorkspaceId()
 }
-
+function getKeyByValue(object, value) {
+  return Object.keys(object).find(key => object[key] === value);
+}
 
 Browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.mode) {
     case "updateList":
-      updateList(msg.data)
+      updateList(msg.data);
+      Browser.runtime.sendMessage({
+        mode: "getWindows"
+      });
+      break;
+    case "updateWindows":
+      updateWindows(msg.data)
       break;
     case "state":
       state.value = msg.msg;

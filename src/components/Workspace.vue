@@ -1,7 +1,7 @@
 
 <template>
   <div
-    :id="data.id" class="workspace" :class="{ focused: expanded }" @dblclick.left="load"
+    :id="data.id" class="workspace" :class="{ focused: expanded, open: open }" @dblclick.left="load"
     @contextmenu.prevent="$emit('focusChange', data.id)"
   >
     <span :hidden="expanded">{{ data.name }}</span>
@@ -16,7 +16,10 @@
 
         <template v-else>
           <form @submit.prevent="changeName">
-            <input v-model="data.name" type="text" name="name" autocomplete="off" focus>
+            <input
+              v-model="data.name" type="text" name="name" autocomplete="off" focus
+              @dblclick.stop
+            >
             <div class="actions">
               <button type="submit">
                 Save
@@ -43,7 +46,7 @@ import Browser from "webextension-polyfill";
 import { emit } from 'process';
 
 defineEmits(['focusChange']);
-const props = defineProps({ id: {}, data: {}, expanded: {}, initialEditing: { default: false } })
+const props = defineProps({ id: {}, data: {}, expanded: {}, initialEditing: { default: false }, open: { default: false } })
 
 var editing = ref(false);
 if (props.initialEditing == true) {
@@ -88,7 +91,10 @@ workspace:hover {
   margin-right: 0
 }
 .workspace.current {
-  background-color:lightcyan;
+  border: 2px dashed darkgreen;
+}
+.workspace.open {
+  background-color:rgb(205, 248, 228);
 }
 
 .workspace header {
