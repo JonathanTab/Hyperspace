@@ -1,10 +1,9 @@
 
 <template>
-  <div
-    :id="data.id" class="workspace" :class="{ focused: expanded, open: open }" @dblclick.left="load"
-    @contextmenu.prevent="$emit('focusChange', data.id)"
-  >
-    <span :hidden="expanded">{{ data.name }}</span>
+  <div :id="data.id" class="workspace" :class="{ focused: expanded, open: open, incognito: data.incognito }"
+    @dblclick.left="load" @contextmenu.prevent="$emit('focusChange', data.id)">
+    <span class="incognitoDecorated" :hidden="expanded">{{ data.name }}</span>
+
 
 
     <template v-if="expanded">
@@ -16,16 +15,15 @@
 
         <template v-else>
           <form @submit.prevent="changeName">
-            <input
-              v-model="data.name" type="text" name="name" autocomplete="off" focus
-              @dblclick.stop
-            >
+            <input v-model="data.name" type="text" name="name" autocomplete="off" focus @dblclick.stop>
             <div class="actions">
               <button type="submit">
                 Save
               </button><button type="button" @click="deleteThis()">
                 Remove
               </button>
+              <input type="checkbox" id="incognito" @change="changeIncognito()" v-model="data.incognito" />
+              <label for="incognito">Incognito</label>
             </div>
           </form>
         </template>
@@ -63,6 +61,11 @@ async function deleteThis() {
 async function changeName() {
   const response = await Browser.runtime.sendMessage({ mode: "changeName", workspaceID: props.data.id, newName: props.data.name });
 }
+async function changeIncognito() {
+  console.log(props.data.incognito);
+
+  const response = await Browser.runtime.sendMessage({ mode: "changeIncognito", workspaceID: props.data.id, incognitoValue: props.data.incognito });
+}
 
 </script>
 
@@ -90,11 +93,18 @@ workspace:hover {
   height: auto;
   margin-right: 0
 }
+
+
 .workspace.current {
   border: 2px dashed darkgreen;
 }
+
+.workspace.incognito .incognitoDecorated {
+  text-decoration: underline 3px rgba(79, 140, 233, 0.933);
+}
+
 .workspace.open {
-  background-color:rgb(205, 248, 228);
+  background-color: rgb(205, 248, 228);
 }
 
 .workspace header {

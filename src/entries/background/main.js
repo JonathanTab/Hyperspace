@@ -6,7 +6,7 @@ import Browser from "webextension-polyfill";
 var settings = {
   syncURL: "https://instrumenta.cf/sync.php",
   appID: "hyperspace",
-  password: "d2ert"
+  password: "temp"
 }
 
 
@@ -45,9 +45,11 @@ async function waitReady() {
 }
 
 async function createWorkspaceFromWindow(windowID, sendResponse) {
+  let windowResponse = await Browser.windows.get(windowID);
   let newWorkspace = {
     id: Date.now(),
     name: "Rename me",
+    incognito: windowResponse.incognito,
     tabs: await createTabsArray(windowID)
   }
 
@@ -92,7 +94,8 @@ async function loadWorkspace(workspaceId, sendResponse) {
         tabs.push(e.url);
       });
       let window = await Browser.windows.create({
-        url: tabs
+        url: tabs,
+        incognito: workspaces[workspaceIndex].incognito
       })
 
       let tabsResponse = await Browser.tabs.query({
@@ -245,6 +248,17 @@ async function changeWorkspaceName(workspaceID, newName, sendResponse) {
   syncChanges();
   sendResponse();
 }
+async function changeWorkspaceIncognito(workspaceID, incognitoValue, sendResponse) {
+  let index = workspaces.findIndex((e) => {
+    return e.id == workspaceID;
+  })
+  if (index > -1) {
+    workspaces[index].incognito = incognitoValue
+  }
+
+  syncChanges();
+  sendResponse();
+}
 
 async function windowRegen(windowId) {
   await waitReady();
@@ -312,6 +326,9 @@ Browser.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
       break;
     case "changeName":
       changeWorkspaceName(msg.workspaceID, msg.newName, sendResponse)
+      break;
+    case "changeIncognito":
+      changeWorkspaceIncognito(msg.workspaceID, msg.incognitoValue, sendResponse)
       break;
     case "load":
       loadWorkspace(msg.workspaceID, sendResponse);
