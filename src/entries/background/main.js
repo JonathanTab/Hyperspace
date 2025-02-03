@@ -13,11 +13,13 @@ var workspaces = "not ready"
 var windows = "not ready";
 var baseTimestamp = ""
 var saving = false
+console.log("service worker spawned");
+
 
 function saveState() {
   Browser.storage.session.set({ windows: windows, workspaces: workspaces, baseTimestamp: baseTimestamp });
 }
-async function waitReady() {
+async function resumeLocalStateOrInit() {
   return new Promise((resolve, reject) => {
     if (windows == "not ready") {
       console.log('resuming Worker');
@@ -25,17 +27,23 @@ async function waitReady() {
         apiKey = result.apiKey
         Browser.storage.session.get(['windows', 'workspaces', 'baseTimestamp']).then((result) => {
           if (typeof result.windows == 'undefined') {
+
             windows = {};
           } else {
             windows = result.windows;
           }
           if (typeof result.workspaces == 'undefined') {
+            console.log("workspaces init");
+
             workspaces = [];
           } else {
+            console.log("workspaces loaded from session");
+
             workspaces = result.workspaces;
             baseTimestamp = result.baseTimestamp;
           }
-          //if anything got initialized
+          //if anything got initializ
+          // ed
           saveState();
           resolve();
         });
@@ -186,17 +194,18 @@ async function sync(localChanges = false) {
           mode: "state",
           msg: "Failed reading server. Bad Key?"
         });
-      }
-      let text = await response.text()
-      if (text.length > 2) {
-        workspaces = JSON.parse(text)
       } else {
-        Browser.runtime.sendMessage({
-          mode: "state",
-          msg: "Blank remote store. Initialized"
-        });
+        let text = await response.text()
+        if (text.length > 2) {
+          workspaces = JSON.parse(text)
+        } else {
+          Browser.runtime.sendMessage({
+            mode: "state",
+            msg: "Blank remote store. Initialized"
+          });
+        }
+        baseTimestamp = response.headers.get('timestamp')
       }
-      baseTimestamp = response.headers.get('timestamp')
       saveState();
     }
   }
@@ -269,7 +278,7 @@ async function changeWorkspaceIncognito(workspaceID, incognitoValue, sendRespons
 }
 
 async function windowRegen(windowId) {
-  await waitReady();
+  await resumeLocalStateOrInit();
   if (windows[windowId] !== 'undefined') {
     console.log(windows[windowId]);
 
@@ -307,14 +316,14 @@ Browser.tabs.onAttached.addListener((tabId, attachInfo) => {
   windowRegen(attachInfo.newWindowId)
 })
 Browser.windows.onRemoved.addListener(async (windowID) => {
-  await waitReady();
+  await resumeLocalStateOrInit();
   delete (windows[windowID]);
   saveState();
   pushWindows();
 });
 
 Browser.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
-  await waitReady();
+  await resumeLocalStateOrInit();
   switch (msg.mode) {
     case "getWorkspaces":
       sendResponse();
@@ -342,13 +351,16 @@ Browser.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
       // Store the API key in chrome.storage.sync
       Browser.storage.sync.set({ apiKey: msg.apiKey });
       apiKey = msg.apiKey
-      sendError("API key set")
-      workspaces = "not ready";
-      windows = "not ready"
-      saveState();
-      pushWindows();
-      pushWorkspaces();
-      syncChanges();
+      Browser.storage.session.remove("workspaces").then((result) => {
+        workspaces = "not ready"
+        windows = "not ready";
+        baseTimestamp = ""
+        sendError('API key set')
+        resumeLocalStateOrInit();
+        pushWorkspaces();
+        sync();
+      });
+
 
       break;
     case "getApiKey":
@@ -367,4 +379,4 @@ Browser.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
   return true;
 });
 
-waitReady()
+resumeLocalStateOrInit()
