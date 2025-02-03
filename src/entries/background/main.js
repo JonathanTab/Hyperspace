@@ -6,9 +6,8 @@ import Browser from "webextension-polyfill";
 var settings = {
   syncURL: "https://instrumenta.cf/sync.php",
   appID: "hyperspace",
-  password: "temp"
 }
-
+var apiKey = "";
 
 var workspaces = "not ready"
 var windows = "not ready";
@@ -21,22 +20,25 @@ function saveState() {
 async function waitReady() {
   return new Promise((resolve, reject) => {
     if (windows == "not ready") {
-      console.log('resuming SW');
-      Browser.storage.session.get(['windows', 'workspaces', 'baseTimestamp']).then((result) => {
-        if (typeof result.windows == 'undefined') {
-          windows = {};
-        } else {
-          windows = result.windows;
-        }
-        if (typeof result.workspaces == 'undefined') {
-          workspaces = [];
-        } else {
-          workspaces = result.workspaces;
-          baseTimestamp = result.baseTimestamp;
-        }
-        //if anything got initialized
-        saveState();
-        resolve();
+      console.log('resuming Worker');
+      Browser.storage.sync.get('apiKey').then((result) => {
+        apiKey = result.apiKey
+        Browser.storage.session.get(['windows', 'workspaces', 'baseTimestamp']).then((result) => {
+          if (typeof result.windows == 'undefined') {
+            windows = {};
+          } else {
+            windows = result.windows;
+          }
+          if (typeof result.workspaces == 'undefined') {
+            workspaces = [];
+          } else {
+            workspaces = result.workspaces;
+            baseTimestamp = result.baseTimestamp;
+          }
+          //if anything got initialized
+          saveState();
+          resolve();
+        });
       });
     } else {
       resolve();
@@ -135,7 +137,7 @@ const syncChangesPT2 = debounce(() => {
 }, 750);
 
 async function sync(localChanges = false) {
-  var URL = settings.syncURL + "?p=" + settings.password + "&appID=" + settings.appID
+  var URL = settings.syncURL + "?apikey=" + apiKey + "&appID=" + settings.appID
   //TODO this should eventually provide a way to resolve conflicts
   //Should we read or write?
 
@@ -143,6 +145,12 @@ async function sync(localChanges = false) {
   if (localChanges == true) {
     saveState();
     let response = await fetch(URL + "&mode=stamp")
+    if (!response.ok) {
+      Browser.runtime.sendMessage({
+        mode: "state",
+        msg: "Failed checking server. Bad Key?"
+      });
+    }
     let remoteTimestamp = await response.text();
     if (!isNaN(parseInt(remoteTimestamp)) && !isNaN(parseInt(baseTimestamp)) && (parseInt(baseTimestamp) == parseInt(remoteTimestamp))) {
       //our base is up to date
@@ -157,7 +165,7 @@ async function sync(localChanges = false) {
       if (!response.ok) {
         Browser.runtime.sendMessage({
           mode: "state",
-          msg: "Failed writing to remote store"
+          msg: "Failed writing to server. Bad Key?"
         });
       }
       baseTimestamp = response.headers.get('timestamp')
@@ -176,7 +184,7 @@ async function sync(localChanges = false) {
       if (!response.ok) {
         Browser.runtime.sendMessage({
           mode: "state",
-          msg: "Failed reading remote store"
+          msg: "Failed reading server. Bad Key?"
         });
       }
       let text = await response.text()
@@ -329,6 +337,25 @@ Browser.runtime.onMessage.addListener(async (msg, sender, sendResponse) => {
       break;
     case "changeIncognito":
       changeWorkspaceIncognito(msg.workspaceID, msg.incognitoValue, sendResponse)
+      break;
+    case "setApiKey":
+      // Store the API key in chrome.storage.sync
+      Browser.storage.sync.set({ apiKey: msg.apiKey });
+      apiKey = msg.apiKey
+      sendError("API key set")
+      workspaces = "not ready";
+      windows = "not ready"
+      saveState();
+      pushWindows();
+      pushWorkspaces();
+      syncChanges();
+
+      break;
+    case "getApiKey":
+      Browser.runtime.sendMessage({
+        mode: "apiKey",
+        apiKey: apiKey
+      });
       break;
     case "load":
       loadWorkspace(msg.workspaceID, sendResponse);
